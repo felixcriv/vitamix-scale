@@ -1,0 +1,765 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f5f1ea" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#141614" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Scale">
+<meta name="description" content="Use your Vitamix / Perfect Company Bluetooth kitchen scale from the browser.">
+<title>Kitchen Scale</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%232f6f5e'/%3E%3Cellipse cx='32' cy='22' rx='18' ry='5' fill='%23f5f1ea'/%3E%3Crect x='10' y='30' width='44' height='20' rx='6' fill='%23f5f1ea'/%3E%3Crect x='22' y='36' width='20' height='8' rx='2' fill='%232f6f5e'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #f5f1ea; --surface: #fffdf9; --surface-2: #efe9df; --ink: #1c1d1b; --muted: #6f6b63; --faint: #a39d92;
+    --line: #e4ddd1; --accent: #2f6f5e; --accent-soft: #dcebe5; --accent-ink: #ffffff;
+    --warn: #c0612b; --warn-soft: #f6e2d6; --ok: #2f8a55; --ring-track: #e9e2d6;
+    --shadow: 0 1px 2px rgba(40,30,10,.05), 0 8px 24px rgba(40,30,10,.06);
+    --radius: 22px; --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #141614; --surface: #1c1f1d; --surface-2: #252926; --ink: #eef0ec; --muted: #a2a8a1; --faint: #6d736c;
+      --line: #2d322e; --accent: #5cbf9f; --accent-soft: #1f3a32; --accent-ink: #0c1411;
+      --warn: #ec935c; --warn-soft: #3d2618; --ok: #66c98d; --ring-track: #2a2f2b;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.25);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #141614; --surface: #1c1f1d; --surface-2: #252926; --ink: #eef0ec; --muted: #a2a8a1; --faint: #6d736c;
+    --line: #2d322e; --accent: #5cbf9f; --accent-soft: #1f3a32; --accent-ink: #0c1411;
+    --warn: #ec935c; --warn-soft: #3d2618; --ok: #66c98d; --ring-track: #2a2f2b;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.25);
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--ink); min-height: 100vh;
+    font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; -webkit-tap-highlight-color: transparent; }
+  .wrap { max-width: 520px; margin: 0 auto; padding: 12px 16px calc(32px + env(safe-area-inset-bottom)); }
+
+  /* Top bar */
+  .top { display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: calc(8px + env(safe-area-inset-top)) 0 12px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; letter-spacing: -0.01em; }
+  .brand svg { width: 30px; height: 30px; flex: none; }
+  .pill { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--line); background: var(--surface);
+    color: var(--ink); border-radius: 999px; padding: 6px 12px 6px 10px; font: inherit; font-size: 13px; font-weight: 500;
+    min-height: 34px; cursor: pointer; max-width: 60vw; }
+  .pill span:last-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); flex: none; }
+  .dot.on { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 22%, transparent); }
+  .dot.busy { background: var(--warn); animation: blink 1s infinite; }
+  @keyframes blink { 50% { opacity: .3; } }
+
+  /* Surfaces */
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
+  .pad { padding: 20px; }
+  .stack > * + * { margin-top: 14px; }
+  h2 { font-size: 22px; line-height: 1.2; margin: 0; letter-spacing: -0.02em; }
+  h3 { font-size: 15px; margin: 0; }
+  .muted { color: var(--muted); font-size: 14px; }
+  .hidden { display: none !important; }
+
+  /* Buttons & inputs */
+  button { font: inherit; cursor: pointer; color: var(--ink); }
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; border-radius: 16px;
+    border: 1px solid var(--line); background: var(--surface); min-height: 52px; padding: 0 18px; font-weight: 600;
+    transition: transform .08s ease, background .15s; }
+  .btn:active { transform: scale(.97); }
+  .btn:disabled { opacity: .4; cursor: default; transform: none; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  .btn.soft { background: var(--surface-2); border-color: transparent; }
+  .btn.block { width: 100%; }
+  .btn.sm { min-height: 36px; border-radius: 10px; padding: 0 12px; font-size: 13px; font-weight: 500; }
+  .btn svg { width: 20px; height: 20px; }
+  .link { background: none; border: 0; color: var(--accent); font-weight: 600; padding: 8px; font-size: 14px; }
+  input, select { font: inherit; color: var(--ink); background: var(--surface-2); border: 1px solid transparent;
+    border-radius: 12px; padding: 10px 12px; min-height: 46px; width: 100%; }
+  input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  label { font-size: 13px; color: var(--muted); display: block; margin-bottom: 6px; font-weight: 500; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* Connect view */
+  .hero { text-align: center; padding: 28px 20px 20px; }
+  .hero svg.art { width: 150px; height: auto; margin: 4px auto 16px; display: block; }
+  .steps { list-style: none; padding: 0; margin: 18px 0 20px; text-align: left; counter-reset: s; }
+  .steps li { counter-increment: s; display: flex; gap: 12px; align-items: flex-start; padding: 10px 0; font-size: 15px; }
+  .steps li::before { content: counter(s); flex: none; width: 26px; height: 26px; border-radius: 50%; background: var(--accent-soft);
+    color: var(--accent); font-weight: 700; font-size: 13px; display: grid; place-items: center; margin-top: -1px; }
+  .notice { border-radius: 14px; padding: 12px 14px; font-size: 14px; text-align: left; background: var(--warn-soft); color: var(--ink); }
+  .notice b { font-weight: 650; }
+
+  /* Scale view */
+  .units { display: flex; background: var(--surface-2); border-radius: 12px; padding: 3px; width: max-content; margin: 0 auto; }
+  .units button { border: 0; background: transparent; border-radius: 9px; min-width: 58px; min-height: 36px; font-weight: 600; color: var(--muted); }
+  .units button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+  .gauge { position: relative; width: min(82vw, 330px); aspect-ratio: 1; margin: 14px auto 6px; }
+  .gauge svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+  .gauge circle { fill: none; stroke-width: 10; }
+  .gauge .track { stroke: var(--ring-track); }
+  .gauge .prog { stroke: var(--accent); stroke-linecap: round; transition: stroke-dashoffset .2s ease, stroke .2s; }
+  .gauge.over .prog { stroke: var(--warn); }
+  .readout { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+  .num { font-size: clamp(56px, 19vw, 88px); font-weight: 700; letter-spacing: -0.04em; line-height: 1;
+    font-variant-numeric: tabular-nums; }
+  .num.dim { color: var(--faint); }
+  .unit { font-size: 20px; color: var(--muted); font-weight: 600; margin-top: 6px; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--muted);
+    background: var(--surface-2); border-radius: 999px; padding: 4px 10px; margin-top: 14px; min-height: 24px; }
+  .chip .dot { width: 7px; height: 7px; }
+  .chip.stable { color: var(--ok); background: color-mix(in srgb, var(--ok) 14%, transparent); }
+  .chip.stable .dot { background: var(--ok); }
+  .sub { text-align: center; font-size: 13px; color: var(--muted); min-height: 20px; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .actions { display: grid; grid-template-columns: 1.4fr 1fr; gap: 10px; margin-top: 14px; }
+  .actions .btn.primary { font-size: 18px; min-height: 60px; }
+  .actions .btn:not(.primary) { min-height: 60px; }
+
+  .target { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: end; }
+  .inwrap { position: relative; }
+  .inwrap .suffix { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); font-weight: 600; pointer-events: none; }
+  .inwrap input { padding-right: 44px; font-variant-numeric: tabular-nums; }
+  .target-status { font-size: 14px; font-weight: 600; margin-top: 10px; min-height: 20px; }
+  .target-status.over { color: var(--warn); } .target-status.done { color: var(--ok); }
+
+  .list { list-style: none; padding: 0; margin: 4px 0 0; }
+  .list li { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-top: 1px solid var(--line);
+    font-variant-numeric: tabular-nums; font-size: 15px; }
+  .list li:first-child { border-top: 0; }
+  .list li span { color: var(--muted); font-size: 13px; }
+  .row-head { display: flex; justify-content: space-between; align-items: center; }
+
+  /* Collapsibles */
+  details.more { border-top: 1px solid var(--line); }
+  details.more:first-of-type { border-top: 0; }
+  details.more summary { list-style: none; cursor: pointer; display: flex; justify-content: space-between; align-items: center;
+    padding: 16px 20px; font-weight: 600; font-size: 15px; }
+  details.more summary::-webkit-details-marker { display: none; }
+  details.more summary::after { content: ""; width: 8px; height: 8px; border-right: 2px solid var(--faint); border-bottom: 2px solid var(--faint);
+    transform: rotate(45deg); transition: transform .2s; margin-right: 4px; }
+  details.more[open] summary::after { transform: rotate(-135deg); }
+  details.more .body { padding: 0 20px 20px; }
+  .tag { font-size: 12px; font-weight: 500; color: var(--muted); margin-left: 6px; }
+  ol.cal { padding-left: 20px; margin: 10px 0; font-size: 14px; } ol.cal li { margin-bottom: 14px; }
+  .flex { display: flex; gap: 10px; flex-wrap: wrap; align-items: end; }
+  .flex > .grow { flex: 1 1 160px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  td, th { text-align: left; padding: 8px 4px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  .mono { font-family: var(--mono); font-size: 12px; word-break: break-all; }
+  pre.log { font-family: var(--mono); font-size: 11px; background: var(--surface-2); border-radius: 12px; padding: 10px;
+    max-height: 240px; overflow: auto; white-space: pre-wrap; word-break: break-all; margin: 10px 0 0; }
+  .ok-text { color: var(--ok); font-weight: 600; }
+  .demo-bar { margin-top: 14px; padding: 12px 14px; border-radius: 14px; background: var(--accent-soft); }
+  .demo-bar input[type=range] { padding: 0; min-height: 30px; background: transparent; accent-color: var(--accent); }
+  .foot { text-align: center; font-size: 12px; color: var(--faint); margin-top: 18px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <svg viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="16" fill="var(--accent)"/><ellipse cx="32" cy="22" rx="18" ry="5" fill="var(--bg)"/><rect x="10" y="30" width="44" height="20" rx="6" fill="var(--bg)"/><rect x="22" y="36" width="20" height="8" rx="2" fill="var(--accent)"/></svg>
+      Kitchen Scale
+    </div>
+    <button id="pill" class="pill" type="button" aria-live="polite"><span id="dot" class="dot"></span><span id="statusText">Not connected</span></button>
+  </header>
+
+  <!-- ===== Not connected ===== -->
+  <section id="connectView" class="card hero">
+    <svg class="art" viewBox="0 0 160 110" aria-hidden="true">
+      <ellipse cx="80" cy="30" rx="56" ry="13" fill="var(--surface-2)" stroke="var(--line)" stroke-width="2"/>
+      <rect x="18" y="46" width="124" height="52" rx="16" fill="var(--surface-2)" stroke="var(--line)" stroke-width="2"/>
+      <rect x="54" y="60" width="52" height="22" rx="5" fill="var(--accent)"/>
+      <text x="80" y="76" text-anchor="middle" font-size="13" font-weight="700" fill="var(--accent-ink)" font-family="system-ui">0.0 g</text>
+      <g fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round">
+        <path d="M128 18a14 14 0 0 1 0 20" opacity=".9"/><path d="M136 11a24 24 0 0 1 0 34" opacity=".5"/>
+      </g>
+    </svg>
+    <h2>Connect your scale</h2>
+    <ol class="steps">
+      <li><div>Turn the scale on.</div></li>
+      <li><div>Tap its <b>Bluetooth</b> button until the icon starts blinking.</div></li>
+      <li><div>Tap <b>Connect</b> and choose <b>Vitamix Scale</b> from the list.</div></li>
+    </ol>
+    <div id="unsupported" class="notice hidden" style="margin-bottom:14px">
+      This browser can't use Bluetooth. Use <b>Chrome</b> or <b>Edge</b> on a computer or Android phone.
+      On iPhone or iPad, use the free <b>Bluefy</b> browser app. The page must be opened over <b>https://</b>.
+    </div>
+    <div id="connectHelp" class="notice hidden" style="margin-bottom:14px"></div>
+    <button id="connectBtn" class="btn primary block" type="button">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 7 10 10-5 5V2l5 5L7 17"/></svg>
+      Connect
+    </button>
+    <button id="demoBtn" class="link" type="button" style="margin-top:8px">Try the demo instead</button>
+    <p class="muted" style="margin:6px 0 0;font-size:13px">The scale turns itself off after about 2 minutes without use.</p>
+  </section>
+
+  <!-- ===== Connected ===== -->
+  <section id="scaleView" class="hidden stack">
+    <div class="card pad">
+      <div class="units" role="group" aria-label="Units">
+        <button type="button" data-unit="g" aria-pressed="true">g</button>
+        <button type="button" data-unit="oz" aria-pressed="false">oz</button>
+        <button type="button" data-unit="lb" aria-pressed="false">lb</button>
+      </div>
+      <div id="gauge" class="gauge">
+        <svg viewBox="0 0 120 120" aria-hidden="true">
+          <circle class="track" cx="60" cy="60" r="54"/>
+          <circle id="prog" class="prog" cx="60" cy="60" r="54" stroke-dasharray="339.29" stroke-dashoffset="339.29"/>
+        </svg>
+        <div class="readout" aria-live="polite">
+          <div id="weightNum" class="num dim">--</div>
+          <div id="weightUnit" class="unit">g</div>
+          <div id="stableChip" class="chip"><span class="dot"></span><span id="stableText">Waiting</span></div>
+        </div>
+      </div>
+      <div id="weightSub" class="sub"></div>
+      <div class="actions">
+        <button id="tareBtn" class="btn primary" type="button" disabled>Tare</button>
+        <button id="clearTareBtn" class="btn soft" type="button" disabled>Clear tare</button>
+      </div>
+      <div id="demoPanel" class="demo-bar hidden">
+        <label for="demoSlider" style="margin:0 0 4px">Demo: weight on the fake scale, <span id="demoVal">0</span> g</label>
+        <input id="demoSlider" type="range" min="0" max="3000" step="1" value="0">
+      </div>
+    </div>
+
+    <div class="card pad">
+      <div class="target">
+        <div>
+          <label for="target">Target amount</label>
+          <div class="inwrap"><input id="target" type="number" inputmode="decimal" min="0" step="any" placeholder="Optional"><span id="targetUnit" class="suffix">g</span></div>
+        </div>
+        <button id="targetClear" class="btn soft sm" type="button" style="min-height:46px">Clear</button>
+      </div>
+      <div id="targetText" class="target-status"></div>
+    </div>
+
+    <div class="card pad">
+      <div class="row-head">
+        <h3>Saved readings</h3>
+        <div>
+          <button id="clearReadings" class="btn sm soft hidden" type="button">Clear</button>
+          <button id="logBtn" class="btn sm primary" type="button" disabled>Save current</button>
+        </div>
+      </div>
+      <ul id="readings" class="list"></ul>
+      <p id="readingsEmpty" class="muted" style="margin:10px 0 0">Tap “Save current” to keep a weight here.</p>
+    </div>
+
+    <button id="disconnectBtn" class="btn soft block" type="button">Disconnect</button>
+  </section>
+
+  <!-- ===== Advanced ===== -->
+  <section class="card" style="margin-top:14px">
+    <details class="more" id="calCard">
+      <summary><span>Scale setup<span id="calTag" class="tag"></span></span></summary>
+      <div class="body">
+        <div id="calSaved" class="muted hidden"></div>
+        <p class="muted">Only needed for scales the app doesn't recognize, or if the weight doesn't match the scale's screen.
+          The app learns the scale's format by comparing its data with the screen. Set the scale's screen to <b>grams</b> first.</p>
+        <ol class="cal">
+          <li>Connect the scale and leave it <b>empty</b>.<br>
+            <button id="capEmpty" class="btn sm soft" type="button" disabled style="margin-top:6px">Capture empty</button> <span id="capEmptyOk" class="muted"></span></li>
+          <li>Put something over about 200 g on it and wait for the screen to settle.
+            <div class="flex" style="margin-top:6px">
+              <div class="grow"><label for="knownG">Grams shown on the scale's screen</label><input id="knownG" type="number" inputmode="decimal" placeholder="e.g. 454"></div>
+              <button id="capKnown" class="btn sm soft" type="button" disabled style="min-height:46px">Capture weight</button>
+            </div>
+            <span id="capKnownOk" class="muted"></span></li>
+          <li>Pick the match below. Its live value should follow what's on the scale.</li>
+        </ol>
+        <div id="candWrap" class="hidden">
+          <table>
+            <thead><tr><th>Live</th><th>Where in the data</th><th></th></tr></thead>
+            <tbody id="candBody"></tbody>
+          </table>
+        </div>
+        <button id="resetCal" class="btn sm soft" type="button" style="margin-top:12px">Forget setup</button>
+      </div>
+    </details>
+    <details class="more" id="explorer">
+      <summary>Bluetooth details</summary>
+      <div class="body">
+        <p class="muted" style="margin-top:0">Everything the scale exposes, and every message it sends as hex bytes. Useful for troubleshooting.</p>
+        <div id="services" class="mono"></div>
+        <div style="margin-top:12px"><label for="extraUuids">Extra service IDs to request (comma separated), then reconnect</label>
+          <input id="extraUuids" placeholder="e.g. 0000abcd-0000-1000-8000-00805f9b34fb"></div>
+        <div class="flex" style="margin-top:12px">
+          <div class="grow"><label for="writeChar">Write bytes to</label><select id="writeChar"></select></div>
+          <div class="grow"><label for="writeHex">Hex bytes</label><input id="writeHex" placeholder="01 02 ff"></div>
+          <button id="writeBtn" class="btn sm soft" type="button" style="min-height:46px">Send</button>
+        </div>
+        <div class="flex" style="margin-top:12px">
+          <button id="copyLog" class="btn sm soft" type="button">Copy log</button>
+          <button id="clearLog" class="btn sm soft" type="button">Clear log</button>
+        </div>
+        <pre id="log" class="log"></pre>
+      </div>
+    </details>
+  </section>
+  <p class="foot">Talks to your scale directly over Bluetooth · nothing is sent anywhere</p>
+</div>
+
+<script>
+(() => {
+  // ---------- constants ----------
+  const GRAMS = { g: 1, oz: 28.349523125, lb: 453.59237 };
+  const STORE = "kitchenScale.v1";
+  // Chrome refuses blocklisted UUIDs; leave them out.
+  const BLOCKED = new Set([0x1812, 0xfffd]);
+  // Vitamix / Perfect Company scale (advertises as "Vitamix Scale", firmware 1.3.3), found by probing the device:
+  //   service 1bc50001…, char 1bc50002 = weight counts (int32 LE), char 1bc50006 = scale's zero point (int32 LE).
+  //   Values are milligrams: grams = (weight - zero) / 1000  (measured: 63.9 g on the scale's screen = 63,865 counts)
+  const PC_SERVICE = "1bc50001-0200-0aa5-e311-24cb004a98c5";
+  const PC_WEIGHT_KEY = `${PC_SERVICE}|1bc50002-0200-0aa5-e311-24cb004a98c5`;
+  const PC_ZERO_KEY = `${PC_SERVICE}|1bc50006-0200-0aa5-e311-24cb004a98c5`;
+  const PC_COUNTS_PER_GRAM = 1000;
+  const PC_PROFILE = { charKey: PC_WEIGHT_KEY, offset: 0, width: 4, le: true, signed: true,
+    factor: 1 / PC_COUNTS_PER_GRAM, zero: 207472, zeroKey: PC_ZERO_KEY, builtin: true };
+  const NAMED = [
+    PC_SERVICE,
+    "b5600001-a0f8-16af-bb42-1d3b642ec2e1", // Perfect Company config/raw service
+    "6e400001-b5a3-f393-e0a9-e50e24dcca9e", // Nordic UART (scale uses an nRF51822)
+    "00001523-1212-efde-1523-785feabcd123", // Nordic LED/Button sample service
+    "0000fee7-0000-1000-8000-00805f9b34fb",
+  ];
+  function std(n) { return `0000${n.toString(16).padStart(4, "0")}-0000-1000-8000-00805f9b34fb`; }
+  function optionalServices() {
+    const s = new Set(NAMED);
+    for (let n = 0x1800; n <= 0x183f; n++) if (!BLOCKED.has(n)) s.add(std(n));
+    for (let n = 0xfe00; n <= 0xffff; n++) if (!BLOCKED.has(n)) s.add(std(n));
+    for (const u of (load().extraUuids || "").split(",").map(x => x.trim().toLowerCase()).filter(Boolean)) {
+      if (/^[0-9a-f]{4}$/.test(u)) s.add(std(parseInt(u, 16)));
+      else if (/^[0-9a-f-]{36}$/.test(u)) s.add(u);
+    }
+    return [...s];
+  }
+  // Standard services that never carry the weight: generic access/attribute, device info, battery.
+  const INFO_SERVICES = ["1800", "1801", "180a", "180f"].map(n => std(parseInt(n, 16)));
+  const isStandardInfo = key => INFO_SERVICES.includes(key.split("|")[0]);
+  const RING = 2 * Math.PI * 54;
+
+  // ---------- state ----------
+  let device = null, demoTimer = null, demoOn = false, manualDisconnect = false, wakeLock = null, reconnecting = false;
+  const chars = new Map();     // key -> {char, label}
+  const lastFrame = new Map(); // key -> Uint8Array
+  let capEmpty = null, capKnown = null, knownGrams = null, candidates = [];
+  let unit = "g", tareG = 0, lastGrams = null, lastFrameAt = 0, targetG = null;
+  let lastChangeAt = 0, prevGrams = null, liveZero = null;
+  let settings = load();
+  let cal = settings.cal || null;
+  if (cal && isStandardInfo(cal.charKey)) { cal = null; delete settings.cal; save(); } // was learned from battery data
+  if (cal?.builtin) { cal = { ...PC_PROFILE }; settings.cal = cal; save(); } // always use the current built-in format
+  if (settings.unit && GRAMS[settings.unit]) unit = settings.unit;
+
+  function load() { try { return JSON.parse(localStorage.getItem(STORE)) || {}; } catch { return {}; } }
+  function save() { try { localStorage.setItem(STORE, JSON.stringify(settings)); } catch {} }
+
+  // ---------- helpers ----------
+  const $ = id => document.getElementById(id);
+  const hex = b => [...b].map(x => x.toString(16).padStart(2, "0")).join(" ");
+  const shortUuid = u => u.startsWith("0000") && u.endsWith("-0000-1000-8000-00805f9b34fb") ? "0x" + u.slice(4, 8) : u;
+  const isConnected = () => !!(device?.gatt?.connected || demoOn);
+  function log(msg) {
+    const el = $("log");
+    const t = new Date().toISOString().slice(11, 23);
+    el.textContent += `${t}  ${msg}\n`;
+    if (el.textContent.length > 60000) el.textContent = el.textContent.slice(-40000);
+    el.scrollTop = el.scrollHeight;
+  }
+  function setStatus(text, state) {
+    $("statusText").textContent = text;
+    $("dot").className = "dot" + (state ? " " + state : "");
+  }
+  function readInt(b, off, width, le, signed) {
+    if (off + width > b.length) return null;
+    let v = 0;
+    for (let i = 0; i < width; i++) v = v * 256 + b[le ? off + width - 1 - i : off + i];
+    if (signed && v >= 2 ** (8 * width - 1)) v -= 2 ** (8 * width);
+    return v;
+  }
+  function decode(c, frame) {
+    const raw = readInt(frame, c.offset, c.width, c.le, c.signed);
+    const zero = c.zeroKey && liveZero != null ? liveZero : c.zero;
+    return raw == null ? null : (raw - zero) * c.factor;
+  }
+  function fmt(grams, u) {
+    const v = grams / GRAMS[u];
+    if (u === "g") return Math.abs(v) < 1000 ? v.toFixed(1) : v.toFixed(0); // scale's own screen shows 0.1 g
+    if (u === "oz") return v.toFixed(2);
+    return v.toFixed(3);
+  }
+  function describe(c) {
+    return `${shortUuid(c.charKey.split("|")[1])} byte ${c.offset}, ${c.width * 8}-bit ${c.signed ? "signed" : "unsigned"} ${c.le ? "little" : "big"}-endian × ${+c.factor.toPrecision(6)}${c.zero ? `, zero at ${c.zero}` : ""}`;
+  }
+
+  // ---------- frames ----------
+  function onFrame(key, bytes) {
+    lastFrame.set(key, bytes);
+    lastFrameAt = Date.now();
+    log(`${chars.get(key)?.label || key}  ${hex(bytes)}`);
+    if (key === PC_ZERO_KEY && bytes.length >= 4) liveZero = readInt(bytes, 0, 4, true, true);
+    if (cal && (key === cal.charKey || key === cal.zeroKey)) {
+      const f = lastFrame.get(cal.charKey);
+      const g = f && decode(cal, f);
+      if (g != null) {
+        if (prevGrams == null || Math.abs(g - prevGrams) > 0.25) lastChangeAt = Date.now();
+        prevGrams = g; lastGrams = g; render();
+      }
+    }
+    if (candidates.length) renderCandidateValues();
+  }
+
+  // ---------- Bluetooth ----------
+  async function connect() {
+    if (!navigator.bluetooth) { $("unsupported").classList.remove("hidden"); return; }
+    stopDemo();
+    const started = Date.now();
+    showConnectHelp("");
+    try {
+      setStatus("Choose your scale…", "busy");
+      device = await navigator.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices: optionalServices() });
+      device.addEventListener("gattserverdisconnected", onDisconnected);
+      manualDisconnect = false;
+      await openGatt();
+    } catch (e) {
+      log("Connect failed: " + e.message);
+      setStatus(e.name === "NotFoundError" ? "Not connected" : "Couldn't connect", "");
+      if (e.name === "NotFoundError" && Date.now() - started < 1500) {
+        // The picker closed by itself almost instantly: the browser has no device picker
+        // (embedded/in-app browsers) or Bluetooth is turned off / not allowed for the browser.
+        showConnectHelp(`The Bluetooth device list closed by itself, so this browser can't show it.
+          Open this page in <b>Chrome</b> or <b>Edge</b> (or <b>Bluefy</b> on iPhone). In-app browsers can't do this.
+          On a Mac, also check that Bluetooth is on and Chrome is allowed under
+          <b>System Settings → Privacy &amp; Security → Bluetooth</b>.`);
+      } else if (e.name === "NotFoundError") {
+        showConnectHelp(`No scale was picked. If it wasn't in the list, tap the scale's Bluetooth button so the icon blinks, wait a few seconds and try again.`);
+      } else {
+        showConnectHelp(`Couldn't connect: ${e.message}. Turn the scale off and on, tap its Bluetooth button, and try again.`);
+      }
+      device = null; updateView();
+    }
+  }
+  function showConnectHelp(html) {
+    $("connectHelp").innerHTML = html;
+    $("connectHelp").classList.toggle("hidden", !html);
+  }
+
+  async function openGatt() {
+    setStatus(`Connecting…`, "busy");
+    const server = await device.gatt.connect();
+    chars.clear(); lastFrame.clear(); liveZero = null;
+    const services = await server.getPrimaryServices();
+    const lines = [];
+    const writable = [];
+    for (const svc of services) {
+      lines.push(`<b>Service ${shortUuid(svc.uuid)}</b>`);
+      let list = [];
+      try { list = await svc.getCharacteristics(); } catch (e) { lines.push("  (couldn't read: " + e.message + ")"); }
+      for (const ch of list) {
+        const p = ch.properties;
+        const props = ["read", "write", "writeWithoutResponse", "notify", "indicate"].filter(k => p[k]);
+        const key = `${svc.uuid}|${ch.uuid}`;
+        const label = `${shortUuid(svc.uuid)}/${shortUuid(ch.uuid)}`;
+        chars.set(key, { char: ch, label });
+        lines.push(`&nbsp;&nbsp;${shortUuid(ch.uuid)} [${props.join(", ")}]`);
+        if (p.write || p.writeWithoutResponse) writable.push([key, label]);
+        if (p.notify || p.indicate) {
+          ch.addEventListener("characteristicvaluechanged", ev => {
+            const dv = ev.target.value;
+            onFrame(key, new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength).slice());
+          });
+          try { await ch.startNotifications(); log(`Listening on ${label}`); }
+          catch (e) { log(`Couldn't listen on ${label}: ${e.message}`); }
+          if (p.read && key.startsWith(PC_SERVICE)) {
+            // The scale only sends weight/zero when they change, so read the current values once.
+            try { const dv = await ch.readValue(); onFrame(key, new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength).slice()); } catch {}
+          }
+        } else if (p.read) {
+          try {
+            const dv = await ch.readValue();
+            log(`Read ${label}: ${hex(new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength))}  "${new TextDecoder().decode(dv).replace(/[^\x20-\x7e]/g, ".")}"`);
+          } catch {}
+        }
+      }
+    }
+    $("services").innerHTML = lines.join("<br>") || "No services found.";
+    $("writeChar").innerHTML = writable.map(([k, l]) => `<option value="${k}">${l}</option>`).join("");
+    setStatus(device.name || "Scale connected", "on");
+    reconnecting = false;
+    if (chars.has(PC_WEIGHT_KEY) && (cal?.charKey !== PC_WEIGHT_KEY || cal.builtin)) {
+      // Recognized the Vitamix / Perfect Company scale: no setup needed.
+      cal = { ...PC_PROFILE }; settings.cal = cal; save(); tareG = 0;
+      const f = lastFrame.get(PC_WEIGHT_KEY);
+      if (f) lastGrams = decode(cal, f);
+      log("Recognized a Vitamix / Perfect Company scale; using its built-in format.");
+    }
+    const weightish = [...chars].some(([k, c]) => !isStandardInfo(k) && (c.char.properties.notify || c.char.properties.indicate));
+    if (!weightish) {
+      log("Only standard services (device info / battery) are visible. The weight service uses an ID this page didn't ask for.");
+      $("explorer").open = true;
+    }
+    lastChangeAt = Date.now();
+    renderCal(); updateView(); keepAwake();
+  }
+
+  async function onDisconnected() {
+    if (manualDisconnect || !device) { reconnecting = false; setStatus("Not connected", ""); updateView(); return; }
+    reconnecting = true; updateView();
+    setStatus("Reconnecting…", "busy");
+    for (let i = 0; i < 5 && device && !manualDisconnect; i++) {
+      await new Promise(r => setTimeout(r, 1000 + i * 1000));
+      try { await openGatt(); return; } catch (e) { log("Reconnect failed: " + e.message); }
+    }
+    reconnecting = false; device = null;
+    setStatus("Not connected", "");
+    showConnectHelp("Lost the connection to the scale. It may have turned itself off. Turn it on, tap its Bluetooth button and connect again.");
+    updateView();
+  }
+
+  function disconnect() {
+    manualDisconnect = true;
+    if (demoOn) { stopDemo(); return; }
+    if (device?.gatt?.connected) device.gatt.disconnect();
+    device = null; reconnecting = false;
+    setStatus("Not connected", ""); updateView();
+  }
+
+  async function keepAwake() {
+    try { if ("wakeLock" in navigator && !wakeLock) { wakeLock = await navigator.wakeLock.request("screen"); wakeLock.addEventListener("release", () => wakeLock = null); } } catch {}
+  }
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && isConnected()) keepAwake(); });
+
+  // ---------- demo (a fake scale for trying the app) ----------
+  function startDemo() {
+    if (device?.gatt?.connected) { manualDisconnect = true; device.gatt.disconnect(); device = null; }
+    demoOn = true;
+    const key = "demo-service|demo-weight";
+    chars.clear(); lastFrame.clear();
+    chars.set(key, { char: null, label: "demo/weight" });
+    $("services").innerHTML = "<b>Demo service</b><br>&nbsp;&nbsp;demo-weight [notify]";
+    // The demo sends weight in tenths of a gram; set it up like a recognized scale.
+    if (!cal || cal.charKey !== key) { settings.demoPrevCal = cal; cal = { charKey: key, offset: 3, width: 2, le: false, signed: false, factor: 0.1, zero: 0, demo: true }; }
+    let n = 0;
+    demoTimer = setInterval(() => {
+      const g = +$("demoSlider").value + (Math.random() - 0.5) * 0.3;
+      const tenths = Math.max(0, Math.round(g * 10));
+      const f = new Uint8Array([0xac, 0x02, n++ & 0xff, (tenths >> 8) & 0xff, tenths & 0xff, 0x01, 0]);
+      f[6] = f.slice(0, 6).reduce((a, b) => a ^ b, 0);
+      onFrame(key, f);
+    }, 200);
+    setStatus("Demo scale", "on");
+    renderCal(); updateView();
+  }
+  function stopDemo() {
+    if (!demoOn) return;
+    clearInterval(demoTimer); demoOn = false;
+    if (cal?.demo) { cal = settings.demoPrevCal || null; delete settings.demoPrevCal; }
+    chars.clear(); lastFrame.clear(); lastGrams = null; tareG = 0;
+    setStatus("Not connected", "");
+    renderCal(); updateView();
+  }
+
+  // ---------- calibration ----------
+  function snapshot() { return new Map([...lastFrame].map(([k, v]) => [k, v.slice()])); }
+
+  function findCandidates() {
+    const out = [];
+    const nice = [];
+    for (const base of [1, GRAMS.oz, GRAMS.lb]) for (const p of [1000, 100, 10, 1, 0.1, 0.01, 0.001, 0.0001]) nice.push(base * p);
+    for (const [key, a] of capEmpty) {
+      if (isStandardInfo(key)) continue; // battery level etc. can never be the weight
+      const b = capKnown.get(key);
+      if (!b || a.length !== b.length) continue;
+      for (const width of [2, 3, 4, 1]) for (let off = 0; off + width <= a.length; off++) for (const le of [false, true]) for (const signed of [false, true]) {
+        if (width === 1 && le) continue;
+        const va = readInt(a, off, width, le, signed), vb = readInt(b, off, width, le, signed);
+        const d = vb - va;
+        if (d === 0) continue;
+        const factor = knownGrams / d;
+        if (factor <= 0) continue;
+        let bestNice = null, err = Infinity;
+        for (const n of nice) { const e = Math.abs(factor / n - 1); if (e < err) { err = e; bestNice = n; } }
+        const absolute = err < 0.06 && Math.abs(va * bestNice) < Math.max(5, knownGrams * 0.05);
+        let score = 0;
+        if (err < 0.06) score += 3 - err * 20;
+        if (absolute) score += 3;
+        score -= (width - 2) * 0.3 + (signed ? 0.05 : 0) + (le ? 0.02 : 0);
+        out.push({ charKey: key, offset: off, width, le, signed,
+          factor: err < 0.06 ? bestNice : factor, zero: absolute ? 0 : va,
+          score, fit: absolute ? "Exact" : err < 0.06 ? "Good" : "Possible" });
+      }
+    }
+    out.sort((x, y) => y.score - x.score);
+    const seen = new Set();
+    return out.filter(c => { const k = `${c.charKey}|${c.offset}|${c.width}|${c.le}|${c.signed}`; if (seen.has(k)) return false; seen.add(k); return true; }).slice(0, 8);
+  }
+
+  function renderCandidates() {
+    $("candWrap").classList.toggle("hidden", !candidates.length);
+    $("candBody").innerHTML = candidates.map((c, i) => `
+      <tr>
+        <td><b id="cv${i}">--</b> g</td>
+        <td class="mono">${describe(c)}<br><span class="muted">${c.fit}</span></td>
+        <td><button class="btn sm ${i === 0 ? "primary" : "soft"}" type="button" data-use="${i}">Use</button></td>
+      </tr>`).join("");
+    renderCandidateValues();
+  }
+  function renderCandidateValues() {
+    candidates.forEach((c, i) => {
+      const f = lastFrame.get(c.charKey), el = $("cv" + i);
+      if (f && el) { const g = decode(c, f); el.textContent = g == null ? "--" : g.toFixed(1); }
+    });
+  }
+  function useCandidate(i) {
+    const c = candidates[i];
+    cal = { charKey: c.charKey, offset: c.offset, width: c.width, le: c.le, signed: c.signed, factor: c.factor, zero: c.zero };
+    if (c.charKey === PC_WEIGHT_KEY) cal.zeroKey = PC_ZERO_KEY; // keep following the scale's own zero
+    settings.cal = cal; save();
+    candidates = []; renderCandidates();
+    tareG = 0;
+    const f = lastFrame.get(cal.charKey);
+    if (f) lastGrams = decode(cal, f);
+    renderCal(); render();
+  }
+  function renderCal() {
+    $("calSaved").classList.toggle("hidden", !cal || cal.demo);
+    $("calTag").textContent = !cal || cal.demo ? "" : cal.builtin ? "· Vitamix recognized" : "· custom";
+    if (cal && !cal.demo) $("calSaved").innerHTML = cal.builtin
+      ? `<span class="ok-text">✓ Vitamix scale recognized.</span> No setup needed.`
+      : "Saved: " + describe(cal);
+  }
+
+  // ---------- UI ----------
+  function updateView() {
+    const on = isConnected() || reconnecting;
+    $("connectView").classList.toggle("hidden", on);
+    $("scaleView").classList.toggle("hidden", !on);
+    $("demoPanel").classList.toggle("hidden", !demoOn);
+    $("disconnectBtn").textContent = demoOn ? "Stop demo" : "Disconnect";
+    for (const id of ["capEmpty", "capKnown"]) $(id).disabled = !isConnected();
+    if (!on) lastGrams = null;
+    render();
+  }
+
+  function render() {
+    const has = lastGrams != null && cal && isConnected();
+    for (const id of ["tareBtn", "logBtn"]) $(id).disabled = !has;
+    $("clearTareBtn").disabled = !has || !tareG;
+    $("weightUnit").textContent = unit;
+    $("targetUnit").textContent = unit;
+    let net = has ? lastGrams - tareG : null;
+    if (net != null && Math.abs(net) < 0.2) net = 0; // hide sensor noise around zero, like the scale's own screen
+    const numEl = $("weightNum");
+    numEl.textContent = has ? fmt(net, unit) : "--";
+    numEl.classList.toggle("dim", !has);
+
+    // status line under the gauge
+    $("weightSub").textContent = reconnecting ? "Reconnecting to the scale…"
+      : !cal ? "Scale not recognized. Open “Scale setup” below."
+      : !has ? "Waiting for the scale…"
+      : tareG ? `Tare ${fmt(tareG, unit)} ${unit} · total ${fmt(lastGrams, unit)} ${unit}` : "";
+
+    // stability chip
+    const stable = has && Date.now() - lastChangeAt > 700;
+    const chip = $("stableChip");
+    chip.classList.toggle("stable", stable);
+    $("stableText").textContent = !has ? (reconnecting ? "Reconnecting" : "Waiting") : stable ? "Stable" : "Settling";
+
+    // target ring
+    const gauge = $("gauge"), prog = $("prog");
+    let pct = 0;
+    if (has && targetG > 0) pct = net / targetG;
+    prog.style.strokeDashoffset = RING * (1 - Math.max(0, Math.min(1, pct)));
+    gauge.classList.toggle("over", pct > 1.02);
+    const tt = $("targetText");
+    tt.className = "target-status";
+    if (has && targetG > 0) {
+      const left = targetG - net;
+      const tol = Math.max(0.5, targetG * 0.005);
+      if (left > tol) tt.textContent = `${fmt(left, unit)} ${unit} to go · ${Math.round(pct * 100)}%`;
+      else if (left < -tol) { tt.textContent = `${fmt(-left, unit)} ${unit} over`; tt.classList.add("over"); }
+      else { tt.textContent = "On target"; tt.classList.add("done"); }
+    } else tt.textContent = targetG > 0 ? "" : "Set an amount to see your progress on the ring.";
+  }
+
+  function setUnit(u) {
+    unit = u; settings.unit = u; save();
+    document.querySelectorAll(".units button").forEach(x => x.setAttribute("aria-pressed", x.dataset.unit === u));
+    if (targetG > 0) $("target").value = +(targetG / GRAMS[u]).toFixed(u === "g" ? 1 : 3);
+    render();
+  }
+
+  // ---------- events ----------
+  if (!navigator.bluetooth) $("unsupported").classList.remove("hidden");
+  $("extraUuids").value = settings.extraUuids || "";
+  $("extraUuids").addEventListener("change", e => { settings.extraUuids = e.target.value; save(); });
+  $("connectBtn").onclick = connect;
+  $("disconnectBtn").onclick = disconnect;
+  $("pill").onclick = () => isConnected() ? null : connect();
+  $("demoBtn").onclick = startDemo;
+  $("demoSlider").oninput = e => $("demoVal").textContent = e.target.value;
+  document.querySelectorAll(".units button").forEach(b => b.onclick = () => setUnit(b.dataset.unit));
+  $("tareBtn").onclick = () => { if (lastGrams != null) { tareG = lastGrams; navigator.vibrate?.(15); render(); } };
+  $("clearTareBtn").onclick = () => { tareG = 0; render(); };
+  $("logBtn").onclick = () => {
+    let net = lastGrams - tareG; if (Math.abs(net) < 0.2) net = 0;
+    const li = document.createElement("li");
+    li.innerHTML = `<span>${new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</span><b>${fmt(net, unit)} ${unit}</b>`;
+    $("readings").prepend(li);
+    $("readingsEmpty").classList.add("hidden");
+    $("clearReadings").classList.remove("hidden");
+  };
+  $("clearReadings").onclick = () => {
+    $("readings").innerHTML = ""; $("readingsEmpty").classList.remove("hidden"); $("clearReadings").classList.add("hidden");
+  };
+  $("target").oninput = e => { const v = parseFloat(e.target.value); targetG = v > 0 ? v * GRAMS[unit] : null; render(); };
+  $("targetClear").onclick = () => { $("target").value = ""; targetG = null; render(); };
+
+  $("capEmpty").onclick = () => {
+    if (!lastFrame.size) { $("capEmptyOk").textContent = "No data from the scale yet. Wait a second and try again."; return; }
+    capEmpty = snapshot(); $("capEmptyOk").textContent = "✓ Captured";
+  };
+  $("capKnown").onclick = () => {
+    knownGrams = parseFloat($("knownG").value);
+    if (!(knownGrams > 0)) { $("capKnownOk").textContent = "Type the weight in grams first."; return; }
+    if (!capEmpty) { $("capKnownOk").textContent = "Do step 1 first."; return; }
+    capKnown = snapshot();
+    candidates = findCandidates();
+    $("capKnownOk").textContent = candidates.length ? "✓ Captured. Pick a match below."
+      : "No change seen in the data. Make sure the weight is on the scale and try again, or check Bluetooth details.";
+    renderCandidates();
+  };
+  $("candBody").addEventListener("click", e => { const b = e.target.closest("[data-use]"); if (b) useCandidate(+b.dataset.use); });
+  $("resetCal").onclick = () => { cal = null; delete settings.cal; save(); tareG = 0; lastGrams = null; renderCal(); render(); };
+
+  $("writeBtn").onclick = async () => {
+    const c = chars.get($("writeChar").value);
+    const bytes = ($("writeHex").value.match(/[0-9a-f]{2}/gi) || []).map(h => parseInt(h, 16));
+    if (!c?.char || !bytes.length) return;
+    try {
+      const data = new Uint8Array(bytes);
+      if (c.char.properties.writeWithoutResponse) await c.char.writeValueWithoutResponse(data);
+      else await c.char.writeValueWithResponse(data);
+      log(`Wrote ${c.label}: ${hex(data)}`);
+    } catch (e) { log("Write failed: " + e.message); }
+  };
+  $("copyLog").onclick = () => navigator.clipboard?.writeText($("log").textContent);
+  $("clearLog").onclick = () => $("log").textContent = "";
+
+  // Keep the stability chip and "no data" hint current.
+  setInterval(() => {
+    if (!isConnected()) return;
+    render();
+    if (cal && lastFrameAt && Date.now() - lastFrameAt > 4000 && Date.now() - lastChangeAt > 120000) {
+      $("weightSub").textContent = "No change for a while. The scale may turn itself off soon.";
+    }
+  }, 300);
+
+  setUnit(unit); renderCal(); updateView();
+})();
+</script>
+</body>
+</html>
