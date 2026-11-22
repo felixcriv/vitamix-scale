@@ -6,9 +6,9 @@ use ble::{Command, Event, Status};
 use futures::channel::mpsc::UnboundedSender;
 use futures::StreamExt;
 use gpui::{
-    actions, canvas, div, point, prelude::*, px, rgb, size, App, Application, Bounds, ClickEvent,
-    Context, FocusHandle, Focusable, FontWeight, KeyBinding, Menu, MenuItem, PathBuilder, Pixels,
-    Rgba, SharedString, Subscription, TitlebarOptions, Window, WindowAppearance, WindowBounds,
+    actions, canvas, div, prelude::*, px, quad, rgb, size, App, Application, Bounds, ClickEvent,
+    Context, FocusHandle, Focusable, FontWeight, KeyBinding, Menu, MenuItem, Pixels,
+    Rgba, SharedString, Subscription, Task, TitlebarOptions, Window, WindowAppearance, WindowBounds,
     WindowOptions,
 };
 use std::time::{Duration, Instant};
@@ -124,26 +124,35 @@ struct ScaleApp {
     cmd: UnboundedSender<Command>,
     focus: FocusHandle,
     theme: Theme,
+    stable_task: Option<Task<()>>,
     _appearance: Subscription,
+}
+
+struct Applied {
+    changed: bool,
+    weight_moved: bool,
 }
 
 impl ScaleApp {
     fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let (cmd, mut events) = ble::start();
         // Bluetooth events -> state.
+        // Only redraw when something visible changed: the scale repeats identical readings
+        // several times a second, and every frame costs GPU memory and power.
         cx.spawn(async move |this, cx| {
             while let Some(ev) = events.next().await {
-                if this.update(cx, |s, cx| { s.apply(ev); cx.notify(); }).is_err() {
+                let alive = this.update(cx, |s, cx| {
+                    let moved = s.apply(ev);
+                    if moved.changed {
+                        cx.notify();
+                    }
+                    if moved.weight_moved {
+                        s.schedule_stable_repaint(cx);
+                    }
+                });
+                if alive.is_err() {
                     break;
                 }
-            }
-        })
-        .detach();
-        // Repaint a few times a second so "Settling" turns into "Stable".
-        cx.spawn(async move |this, cx| loop {
-            cx.background_executor().timer(Duration::from_millis(250)).await;
-            if this.update(cx, |_, cx| cx.notify()).is_err() {
-                break;
             }
         })
         .detach();
@@ -166,6 +175,7 @@ impl ScaleApp {
             cmd,
             focus: cx.focus_handle(),
             theme: Theme::for_appearance(window.appearance()),
+            stable_task: None,
             _appearance: appearance,
         }
     }
@@ -188,7 +198,8 @@ impl ScaleApp {
         Some(if n.abs() < 0.2 { 0.0 } else { n })
     }
 
-    fn apply(&mut self, ev: Event) {
+    fn apply(&mut self, ev: Event) -> Applied {
+        let before = (self.status.clone(), self.weight, self.zero, self.battery, self.taring);
         match ev {
             Event::Status(s) => {
                 if !matches!(s, Status::Connected(_)) {
@@ -213,12 +224,25 @@ impl ScaleApp {
             Event::Battery(b) => self.battery = Some(b),
             Event::Log(m) => eprintln!("[bluetooth] {m}"),
         }
+        let mut weight_moved = false;
         if let Some(g) = self.grams() {
             if self.prev_grams.map_or(true, |p| (g - p).abs() > 0.25) {
                 self.last_change = Instant::now();
+                weight_moved = true;
             }
             self.prev_grams = Some(g);
         }
+        let after = (self.status.clone(), self.weight, self.zero, self.battery, self.taring);
+        Applied { changed: before != after, weight_moved }
+    }
+
+    /// One redraw shortly after the weight stops moving, so "Settling" turns into "Stable".
+    /// Replacing the task cancels the previous one.
+    fn schedule_stable_repaint(&mut self, cx: &mut Context<Self>) {
+        self.stable_task = Some(cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(Duration::from_millis(750)).await;
+            let _ = this.update(cx, |_, cx| cx.notify());
+        }));
     }
 
     fn tare(&mut self, cx: &mut Context<Self>) {
@@ -560,28 +584,20 @@ impl Render for ScaleApp {
 }
 
 /// Draw the target ring: a full track plus an arc from 12 o'clock for the progress.
+/// Built from overlapping round quads (GPUI's cheapest primitive) rather than a stroked
+/// path, which would go through the much heavier MSAA path renderer.
 fn paint_ring(bounds: Bounds<Pixels>, pct: f64, track: Rgba, color: Rgba, window: &mut Window) {
+    const THICK: f32 = 10.0;
     let c = bounds.center();
-    let r = f32::from(bounds.size.width.min(bounds.size.height)) / 2.0 - 8.0;
-    let arc = |from: f32, to: f32| -> Option<gpui::Path<Pixels>> {
-        let mut b = PathBuilder::stroke(px(10.));
-        let steps = ((to - from).abs() / std::f32::consts::TAU * 180.0).ceil().max(2.0) as usize;
-        for i in 0..=steps {
-            let a = from + (to - from) * i as f32 / steps as f32;
-            let p = point(c.x + px(r * a.cos()), c.y + px(r * a.sin()));
-            if i == 0 { b.move_to(p) } else { b.line_to(p) }
-        }
-        b.build().ok()
-    };
-    let start = -std::f32::consts::FRAC_PI_2;
-    if let Some(p) = arc(0.0, std::f32::consts::TAU) {
-        window.paint_path(p, track);
-    }
-    let p = pct.min(1.0) as f32;
-    if p > 0.003 {
-        if let Some(path) = arc(start, start + p * std::f32::consts::TAU) {
-            window.paint_path(path, color);
-        }
+    let r = f32::from(bounds.size.width.min(bounds.size.height)) / 2.0 - THICK;
+    let dots = ((std::f32::consts::TAU * r) / 2.5).ceil() as usize; // ~2.5 px apart: reads as a solid line
+    let filled = ((pct.clamp(0.0, 1.0) as f32) * dots as f32).round() as usize;
+    for i in 0..dots {
+        let a = -std::f32::consts::FRAC_PI_2 + std::f32::consts::TAU * i as f32 / dots as f32;
+        let (x, y) = (c.x + px(r * a.cos() - THICK / 2.0), c.y + px(r * a.sin() - THICK / 2.0));
+        let b = Bounds { origin: gpui::point(x, y), size: size(px(THICK), px(THICK)) };
+        let col = if i < filled { color } else { track };
+        window.paint_quad(quad(b, px(THICK / 2.0), col, px(0.), gpui::transparent_black(), Default::default()));
     }
 }
 
