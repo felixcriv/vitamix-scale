@@ -252,7 +252,7 @@
   </section>
 
   <!-- ===== Advanced ===== -->
-  <section class="card" style="margin-top:14px">
+  <section id="advanced" class="card hidden" style="margin-top:14px">
     <details class="more" id="calCard">
       <summary><span>Scale setup<span id="calTag" class="tag"></span></span></summary>
       <div class="body">
@@ -351,6 +351,10 @@
   const INFO_SERVICES = ["1800", "1801", "180a", "180f"].map(n => std(parseInt(n, 16)));
   const isStandardInfo = key => INFO_SERVICES.includes(key.split("|")[0]);
   const RING = 2 * Math.PI * 54;
+  // "Scale setup" and "Bluetooth details" are for troubleshooting: shown with ?debug in the URL,
+  // or automatically when the connected scale isn't recognized.
+  const DEBUG = new URLSearchParams(location.search).has("debug");
+  function showAdvanced() { document.getElementById("advanced").classList.remove("hidden"); }
 
   // ---------- state ----------
   let device = null, demoTimer = null, demoOn = false, manualDisconnect = false, wakeLock = null, reconnecting = false;
@@ -514,7 +518,9 @@
     const weightish = [...chars].some(([k, c]) => !isStandardInfo(k) && (c.char.properties.notify || c.char.properties.indicate));
     if (!weightish) {
       log("Only standard services (device info / battery) are visible. The weight service uses an ID this page didn't ask for.");
-      $("explorer").open = true;
+      showAdvanced(); $("explorer").open = true;
+    } else if (!cal) {
+      showAdvanced(); $("calCard").open = true; // unrecognized scale: needs the one-time setup
     }
     lastChangeAt = Date.now();
     renderCal(); updateView(); keepAwake();
@@ -709,6 +715,7 @@
 
   // ---------- events ----------
   if (!navigator.bluetooth) $("unsupported").classList.remove("hidden");
+  if (DEBUG) showAdvanced();
   $("extraUuids").value = settings.extraUuids || "";
   $("extraUuids").addEventListener("change", e => { settings.extraUuids = e.target.value; save(); });
   $("connectBtn").onclick = connect;

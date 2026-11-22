@@ -9,6 +9,8 @@ A one-page web app for the Vitamix / Perfect Company Bluetooth kitchen scale, no
 
 Turn the scale on, tap its Bluetooth button until the icon blinks, then tap **Connect** and pick "Vitamix Scale".
 
+Troubleshooting: add `?debug` to the address (https://felixcriv.github.io/vitamix-scale/?debug) to show **Scale setup** and **Bluetooth details**.
+
 ## Protocol notes
 
 The scale advertises as `Vitamix Scale` (Perfect Company, nRF51822, firmware 1.3.3).
