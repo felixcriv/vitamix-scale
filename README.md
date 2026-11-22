@@ -17,3 +17,5 @@ The scale advertises as `Vitamix Scale` (Perfect Company, nRF51822, firmware 1.3
   - `1bc50002-…` weight, int32 little-endian, milligrams (read + notify on change)
   - `1bc50006-…` the scale's zero point, int32 little-endian, milligrams
 - grams = (weight − zero) / 1000
+- Service `b5600001-a0f8-16af-bb42-1d3b642ec2e1`
+  - `b5600008-…` 10 bytes: int32 (0), int32 limit (7,000,000 mg), uint16 flag. **Tare:** write it with the flag set to `01 00`, then again with `00 00`; the scale zeroes and sends its new zero point on `1bc50006`.

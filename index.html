@@ -317,6 +317,9 @@
   const PC_WEIGHT_KEY = `${PC_SERVICE}|1bc50002-0200-0aa5-e311-24cb004a98c5`;
   const PC_ZERO_KEY = `${PC_SERVICE}|1bc50006-0200-0aa5-e311-24cb004a98c5`;
   const PC_COUNTS_PER_GRAM = 1000;
+  // Tare on the scale itself: char b5600008 holds [int32 0][int32 limit 7,000,000 mg][uint16 flag].
+  // Writing the flag as 01 00 and then 00 00 makes the scale zero (confirmed by probing).
+  const PC_TARE_KEY = "b5600001-a0f8-16af-bb42-1d3b642ec2e1|b5600008-a0f8-16af-bb42-1d3b642ec2e1";
   const PC_PROFILE = { charKey: PC_WEIGHT_KEY, offset: 0, width: 4, le: true, signed: true,
     factor: 1 / PC_COUNTS_PER_GRAM, zero: 207472, zeroKey: PC_ZERO_KEY, builtin: true };
   const NAMED = [
@@ -355,7 +358,7 @@
   const lastFrame = new Map(); // key -> Uint8Array
   let capEmpty = null, capKnown = null, knownGrams = null, candidates = [];
   let unit = "g", tareG = 0, lastGrams = null, lastFrameAt = 0, targetG = null;
-  let lastChangeAt = 0, prevGrams = null, liveZero = null;
+  let lastChangeAt = 0, prevGrams = null, liveZero = null, zeroSeq = 0, taring = false;
   let settings = load();
   let cal = settings.cal || null;
   if (cal && isStandardInfo(cal.charKey)) { cal = null; delete settings.cal; save(); } // was learned from battery data
@@ -408,7 +411,7 @@
     lastFrame.set(key, bytes);
     lastFrameAt = Date.now();
     log(`${chars.get(key)?.label || key}  ${hex(bytes)}`);
-    if (key === PC_ZERO_KEY && bytes.length >= 4) liveZero = readInt(bytes, 0, 4, true, true);
+    if (key === PC_ZERO_KEY && bytes.length >= 4) { liveZero = readInt(bytes, 0, 4, true, true); zeroSeq++; }
     if (cal && (key === cal.charKey || key === cal.zeroKey)) {
       const f = lastFrame.get(cal.charKey);
       const g = f && decode(cal, f);
@@ -658,7 +661,7 @@
 
   function render() {
     const has = lastGrams != null && cal && isConnected();
-    for (const id of ["tareBtn", "logBtn"]) $(id).disabled = !has;
+    for (const id of ["tareBtn", "logBtn"]) $(id).disabled = !has || (id === "tareBtn" && taring);
     $("clearTareBtn").disabled = !has || !tareG;
     $("weightUnit").textContent = unit;
     $("targetUnit").textContent = unit;
@@ -714,7 +717,42 @@
   $("demoBtn").onclick = startDemo;
   $("demoSlider").oninput = e => $("demoVal").textContent = e.target.value;
   document.querySelectorAll(".units button").forEach(b => b.onclick = () => setUnit(b.dataset.unit));
-  $("tareBtn").onclick = () => { if (lastGrams != null) { tareG = lastGrams; navigator.vibrate?.(15); render(); } };
+  // Ask the scale itself to zero. Resolves true once the scale reports a new zero point.
+  async function scaleTare() {
+    const c = chars.get(PC_TARE_KEY)?.char;
+    if (!c || !cal?.zeroKey || !device?.gatt?.connected) return false;
+    const write = d => (c.writeValueWithResponse ? c.writeValueWithResponse(d) : c.writeValue(d));
+    const waitZero = async (seq, ms) => { const end = Date.now() + ms; while (Date.now() < end) { if (zeroSeq !== seq) return true; await new Promise(r => setTimeout(r, 50)); } return false; };
+    try {
+      const dv = await c.readValue();
+      const cur = new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength);
+      if (cur.length !== 10) return false;
+      const base = cur.slice(0, 8);
+      const withFlag = f => { const b = new Uint8Array(10); b.set(base); b[8] = f; return b; };
+      const nearZero = lastGrams != null && Math.abs(lastGrams) < 0.5; // zero may not visibly move, so no confirmation
+      for (const pause of [300, 1000]) {
+        const seq = zeroSeq;
+        await write(withFlag(1));
+        await new Promise(r => setTimeout(r, pause));
+        await write(withFlag(0));
+        log(`Sent tare to the scale (pause ${pause} ms)`);
+        if (await waitZero(seq, nearZero ? 600 : 2000) || nearZero) return true;
+      }
+    } catch (e) { log("Scale tare failed: " + e.message); }
+    return false;
+  }
+  $("tareBtn").onclick = async () => {
+    if (lastGrams == null || taring) return;
+    navigator.vibrate?.(15);
+    if (chars.has(PC_TARE_KEY) && !demoOn) {
+      taring = true; $("tareBtn").textContent = "Taring…"; render();
+      const ok = await scaleTare();
+      taring = false; $("tareBtn").textContent = "Tare";
+      if (ok) { tareG = 0; render(); return; }
+      log("The scale didn't confirm the tare; using the app's own tare instead.");
+    }
+    tareG = lastGrams; render();
+  };
   $("clearTareBtn").onclick = () => { tareG = 0; render(); };
   $("logBtn").onclick = () => {
     let net = lastGrams - tareG; if (Math.abs(net) < 0.2) net = 0;
