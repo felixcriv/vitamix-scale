@@ -1,0 +1,16 @@
+[package]
+name = "kitchen-scale"
+version = "0.1.0"
+edition = "2021"
+description = "Native macOS app for the Vitamix / Perfect Company Bluetooth kitchen scale"
+
+[dependencies]
+gpui = { version = "=0.2.2", default-features = false, features = ["font-kit", "runtime_shaders"] }
+btleplug = "=0.13.5"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"] }
+futures = "0.3"
+uuid = "1"
+
+[profile.release]
+opt-level = 3
+lto = "thin"

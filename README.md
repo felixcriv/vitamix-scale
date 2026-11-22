@@ -11,6 +11,19 @@ Turn the scale on, tap its Bluetooth button until the icon blinks, then tap **Co
 
 Troubleshooting: add `?debug` to the address (https://felixcriv.github.io/vitamix-scale/?debug) to show **Scale setup** and **Bluetooth details**.
 
+## Mac app
+
+A native macOS app lives in [`mac/`](mac/), built with [GPUI](https://gpui.rs) and [btleplug](https://github.com/deviceplug/btleplug). It finds the scale automatically, shows live weight with a target ring, and its Tare button zeroes the scale itself. Keys: T or Space to tare, G / O / L for units.
+
+Build it (needs Rust and Xcode):
+
+```bash
+./mac/bundle.sh
+open "mac/dist/Kitchen Scale.app"
+```
+
+macOS asks for Bluetooth permission on first launch. The app is ad-hoc signed, so on another Mac right-click it and choose Open the first time.
+
 ## Protocol notes
 
 The scale advertises as `Vitamix Scale` (Perfect Company, nRF51822, firmware 1.3.3).
