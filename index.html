@@ -292,6 +292,7 @@
           <button id="writeBtn" class="btn sm soft" type="button" style="min-height:46px">Send</button>
         </div>
         <div class="flex" style="margin-top:12px">
+          <button id="shareLog" class="btn sm primary hidden" type="button">Share log</button>
           <button id="copyLog" class="btn sm soft" type="button">Copy log</button>
           <button id="clearLog" class="btn sm soft" type="button">Clear log</button>
         </div>
@@ -326,6 +327,13 @@
     "0000fee7-0000-1000-8000-00805f9b34fb",
   ];
   function std(n) { return `0000${n.toString(16).padStart(4, "0")}-0000-1000-8000-00805f9b34fb`; }
+  // Some browsers (e.g. Bluefy on iOS) report UUIDs in upper case or in short 16/32-bit form.
+  function normUuid(u) {
+    u = String(u).trim().toLowerCase();
+    if (/^(0x)?[0-9a-f]{4}$/.test(u)) return std(parseInt(u.replace("0x", ""), 16));
+    if (/^[0-9a-f]{8}$/.test(u)) return `${u}-0000-1000-8000-00805f9b34fb`;
+    return u;
+  }
   function optionalServices() {
     const s = new Set(NAMED);
     for (let n = 0x1800; n <= 0x183f; n++) if (!BLOCKED.has(n)) s.add(std(n));
@@ -454,22 +462,26 @@
     const services = await server.getPrimaryServices();
     const lines = [];
     const writable = [];
+    log(`Connected to ${device.name || "device"}; ${services.length} services`);
     for (const svc of services) {
-      lines.push(`<b>Service ${shortUuid(svc.uuid)}</b>`);
+      const svcUuid = normUuid(svc.uuid);
+      lines.push(`<b>Service ${shortUuid(svcUuid)}</b>`);
       let list = [];
       try { list = await svc.getCharacteristics(); } catch (e) { lines.push("  (couldn't read: " + e.message + ")"); }
       for (const ch of list) {
         const p = ch.properties;
         const props = ["read", "write", "writeWithoutResponse", "notify", "indicate"].filter(k => p[k]);
-        const key = `${svc.uuid}|${ch.uuid}`;
-        const label = `${shortUuid(svc.uuid)}/${shortUuid(ch.uuid)}`;
+        const chUuid = normUuid(ch.uuid);
+        const key = `${svcUuid}|${chUuid}`;
+        const label = `${shortUuid(svcUuid)}/${shortUuid(chUuid)}`;
         chars.set(key, { char: ch, label });
-        lines.push(`&nbsp;&nbsp;${shortUuid(ch.uuid)} [${props.join(", ")}]`);
+        lines.push(`&nbsp;&nbsp;${shortUuid(chUuid)} [${props.join(", ")}]`);
+        log(`Found ${label} [${props.join(", ")}]${ch.uuid !== chUuid ? ` (reported as ${ch.uuid})` : ""}`);
         if (p.write || p.writeWithoutResponse) writable.push([key, label]);
         if (p.notify || p.indicate) {
           ch.addEventListener("characteristicvaluechanged", ev => {
-            const dv = ev.target.value;
-            onFrame(key, new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength).slice());
+            const dv = ev.target?.value || ch.value;
+            if (dv) onFrame(key, new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength).slice());
           });
           try { await ch.startNotifications(); log(`Listening on ${label}`); }
           catch (e) { log(`Couldn't listen on ${label}: ${e.message}`); }
@@ -746,7 +758,19 @@
       log(`Wrote ${c.label}: ${hex(data)}`);
     } catch (e) { log("Write failed: " + e.message); }
   };
-  $("copyLog").onclick = () => navigator.clipboard?.writeText($("log").textContent);
+  function logText() {
+    return `Kitchen Scale log\n${navigator.userAgent}\nSetup: ${cal ? (cal.builtin ? "Vitamix built-in" : describe(cal)) : "none"}\n\n${$("log").textContent}`;
+  }
+  if (navigator.share) $("shareLog").classList.remove("hidden");
+  $("shareLog").onclick = () => navigator.share({ title: "Kitchen Scale log", text: logText() }).catch(() => {});
+  $("copyLog").onclick = async () => {
+    try { await navigator.clipboard.writeText(logText()); $("copyLog").textContent = "Copied ✓"; }
+    catch { // Fallback: select the log so it can be copied by hand.
+      const r = document.createRange(); r.selectNodeContents($("log"));
+      const s = getSelection(); s.removeAllRanges(); s.addRange(r); $("copyLog").textContent = "Selected, now copy";
+    }
+    setTimeout(() => $("copyLog").textContent = "Copy log", 2000);
+  };
   $("clearLog").onclick = () => $("log").textContent = "";
 
   // Keep the stability chip and "no data" hint current.
